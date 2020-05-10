@@ -8,9 +8,9 @@ absl-py
 pandas
 pyro-ppl
 future
-tensorboard
+#tensorboard
 requests
-tensorflow
+#tensorflow
 hyperopt
 ray[tune]
 tables
