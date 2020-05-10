@@ -38,8 +38,8 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
         super().__init__(normalize_data, random_seed)
 
         assert learning_mode in ['learn_mean', 'learn_kernel', 'both', 'vanilla']
-        assert mean_module in ['NN', 'constant', 'zero'] or isinstance(mean_module, gpytorch.means.Mean)
-        assert covar_module in ['NN', 'SE'] or isinstance(covar_module, gpytorch.kernels.Kernel)
+        assert mean_module in ['NN', 'NNOne', 'constant', 'zero'] or isinstance(mean_module, gpytorch.means.Mean)
+        assert covar_module in ['NN', 'SE', 'NNL'] or isinstance(covar_module, gpytorch.kernels.Kernel)
         assert optimizer in ['Adam', 'SGD']
 
         self.lr_params, self.weight_decay, self.feature_dim = lr_params, weight_decay, feature_dim
@@ -194,6 +194,8 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
             'optimizer': self.optimizer.state_dict(),
             'model': self.task_dicts[0]['model'].state_dict()
         }
+        if hasattr(self, 'k_layer'):
+            state_dict['k_layer'] = self.k_layer.state_dict()
         for task_dict in self.task_dicts:
             for key, tensor in task_dict['model'].state_dict().items():
                 assert torch.all(state_dict['model'][key] == tensor).item()
@@ -203,6 +205,8 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
         for task_dict in self.task_dicts:
             task_dict['model'].load_state_dict(state_dict['model'])
         self.optimizer.load_state_dict(state_dict['optimizer'])
+        if hasattr(self, 'k_layer'):
+            self.k_layer.load_state_dict(state_dict['k_layer'])
 
     def _setup_gp_prior(self, mean_module, covar_module, learning_mode, feature_dim, mean_nn_layers, kernel_nn_layers):
 
@@ -216,6 +220,13 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
             self.shared_parameters.append(
                 {'params': self.nn_kernel_map.parameters(), 'lr': self.lr_params, 'weight_decay': self.weight_decay})
             self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=feature_dim)).to(device)
+        elif covar_module == 'NNL':
+            assert learning_mode in ['learn_kernel', 'both'], 'neural network parameters must be learned'
+            self.nn_kernel_map = NeuralNetwork(input_dim=self.input_dim, output_dim=feature_dim,
+                                          layer_sizes=kernel_nn_layers).to(device)
+            self.shared_parameters.append(
+                {'params': self.nn_kernel_map.parameters(), 'lr': self.lr_params, 'weight_decay': self.weight_decay})
+            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.LinearKernel()).to(device)
         else:
             self.nn_kernel_map = None
 
@@ -232,6 +243,11 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
             self.shared_parameters.append(
                 {'params': self.nn_mean_fn.parameters(), 'lr': self.lr_params, 'weight_decay': self.weight_decay})
             self.mean_module = None
+        elif mean_module == 'NNOne' and self.nn_kernel_map is not None:
+            self.k_layer = torch.nn.Linear(feature_dim, 1)
+            self.nn_mean_fn = lambda x: self.k_layer(self.nn_kernel_map(x))
+            self.mean_module = None
+            self.shared_parameters.append({'params': self.k_layer.parameters(), 'lr': self.lr_params, 'weight_decay': self.weight_decay})
         else:
             self.nn_mean_fn = None
 
