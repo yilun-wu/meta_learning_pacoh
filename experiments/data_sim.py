@@ -22,6 +22,8 @@ class MetaDataset():
     def __init__(self, random_state=None):
         if random_state is None:
             self.random_state = np.random
+        elif not isinstance(random_state, np.random.RandomState):
+            self.random_state = np.random.RandomState(random_state)
         else:
             self.random_state = random_state
 
@@ -219,16 +221,21 @@ class SinusoidDataset(MetaDataset):
         self.noise_std = noise_std
         self.x_low, self.x_high = x_low, x_high
 
-    def generate_meta_test_data(self, n_tasks, n_samples_context, n_samples_test):
+    def generate_meta_test_data(self, n_tasks, n_samples_context, n_samples_test, return_f=False):
         assert n_samples_test > 0
         meta_test_tuples = []
+        meta_test_f = []
         for i in range(n_tasks):
             f = self._sample_sinusoid()
             X = self.random_state.uniform(self.x_low, self.x_high, size=(n_samples_context + n_samples_test, 1))
             Y = f(X) + self.noise_std * self.random_state.normal(size=f(X).shape)
             meta_test_tuples.append((X[:n_samples_context], Y[:n_samples_context], X[n_samples_context:], Y[n_samples_context:]))
+            meta_test_f.append(f)
 
-        return meta_test_tuples
+        if return_f:
+            return meta_test_tuples, meta_test_f
+        else:
+            return meta_test_tuples
 
     def generate_meta_train_data(self, n_tasks, n_samples):
         meta_train_tuples = []
