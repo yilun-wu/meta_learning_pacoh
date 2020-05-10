@@ -511,9 +511,9 @@ class LearnedGPRegressionModel(gpytorch.models.ExactGP):
 
         # feed through mean module
         if self.learned_mean is not None:
-            mean_x = self.learned_mean(x).squeeze()
+            mean_x = self.learned_mean(x).flatten()
         else:
-            mean_x = self.mean_module(projected_x).squeeze()
+            mean_x = self.mean_module(projected_x).flatten()
 
         covar_x = self.covar_module(projected_x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
